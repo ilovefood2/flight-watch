@@ -1,0 +1,81 @@
+name: flight-watch
+
+on:
+  schedule:
+    # Every 30 minutes. GitHub often runs scheduled jobs late under load -
+    # treat this as "roughly every 30-60 min", not a guarantee.
+    - cron: "*/30 * * * *"
+  workflow_dispatch:
+    inputs:
+      alert_premium:
+        description: "Alert when premium economy is at or below (CAD)"
+        required: false
+        default: "3000"
+      alert_business:
+        description: "Alert when business is at or below (CAD)"
+        required: false
+        default: "6200"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: flight-watch
+  cancel-in-progress: false
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Scan fares
+        id: scan
+        env:
+          ALERT_PREMIUM: ${{ github.event.inputs.alert_premium || '3000' }}
+          ALERT_BUSINESS: ${{ github.event.inputs.alert_business || '6200' }}
+          ALERT_DROP: "150"
+          WINDOW_START: "2026-09-01"
+          WINDOW_END: "2026-12-20"
+          TRIP_LENGTHS: "14,17"
+          MAX_TRIP_DAYS: "20"
+          SLICES: "6"
+        run: python scripts/scan.py
+
+      - name: Push to Telegram
+        if: always()
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python scripts/notify.py
+
+      - name: Commit price history
+        if: always()
+        run: |
+          git config user.name  "flight-watch[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add state/prices.json
+          git diff --staged --quiet || git commit -m "prices: $(date -u '+%Y-%m-%d %H:%M UTC')"
+          # Another run may have landed first; rebase before pushing.
+          git pull --rebase --autostash origin "${GITHUB_REF_NAME}" || true
+          git push origin "HEAD:${GITHUB_REF_NAME}" || true
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "### flight-watch"
+            echo ""
+            echo "- alerts: \`${{ steps.scan.outputs.count }}\`"
+            echo "- blocked: \`${{ steps.scan.outputs.blocked }}\`"
+            echo ""
+            echo '```json'
+            head -c 2000 alerts.json 2>/dev/null || echo "(no alerts.json)"
+            echo ""
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
