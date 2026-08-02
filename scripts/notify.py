@@ -116,7 +116,10 @@ def main():
         lines.append(f"\n…另有 {len(alerts) - MAX_LINES} 个也符合条件")
 
     lines.append("\n<i>直飞 AC27/28 · 往返含税 · 1 成人 · CAD</i>")
-    send("\n".join(lines))
+    if not send("\n".join(lines)):
+        # Surface it. A notifier that fails quietly is worse than no
+        # notifier: "no message" would read as "no cheap flights".
+        sys.exit(1)
 
 
 if __name__ == "__main__":
