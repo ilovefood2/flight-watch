@@ -3,17 +3,27 @@ on: workflow_dispatch
 jobs:
   diag:
     runs-on: ubuntu-latest
+    env:
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
     steps:
-      - name: Telegram API reachability from runner
+      - name: Isolate what Telegram rejects
         run: |
-          echo "--- getMe with invalid token (healthy API answers 401) ---"
-          curl -sS -o /tmp/a.txt -w "http=%{http_code}\n" \
-            "https://api.telegram.org/bot123456:invalid/getMe" || true
-          cat /tmp/a.txt; echo
-          echo "--- sendMessage with invalid token ---"
-          curl -sS -o /tmp/b.txt -w "http=%{http_code}\n" \
-            -d "chat_id=1&text=x" \
-            "https://api.telegram.org/bot123456:invalid/sendMessage" || true
-          cat /tmp/b.txt; echo
-          echo "--- resolved IP ---"
-          getent hosts api.telegram.org || true
+          api="https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}"
+          echo "token length: ${#TELEGRAM_BOT_TOKEN}  chat_id length: ${#TELEGRAM_CHAT_ID}"
+          echo "--- 1. getMe (is the token valid?) ---"
+          curl -sS -o /tmp/1.txt -w "http=%{http_code}\n" "$api/getMe" || true
+          cat /tmp/1.txt; echo
+          echo "--- 2. tiny plain-text sendMessage ---"
+          curl -sS -o /tmp/2.txt -w "http=%{http_code}\n" \
+            --data-urlencode "chat_id=${TELEGRAM_CHAT_ID}" \
+            --data-urlencode "text=flight-watch diagnostic" \
+            "$api/sendMessage" || true
+          cat /tmp/2.txt; echo
+          echo "--- 3. HTML parse_mode with a link ---"
+          curl -sS -o /tmp/3.txt -w "http=%{http_code}\n" \
+            --data-urlencode "chat_id=${TELEGRAM_CHAT_ID}" \
+            --data-urlencode 'text=<b>bold</b> <a href="https://example.com">link</a>' \
+            --data-urlencode "parse_mode=HTML" \
+            "$api/sendMessage" || true
+          cat /tmp/3.txt; echo
