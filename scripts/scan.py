@@ -30,18 +30,23 @@ CABIN_ZH = {"premium": "超经", "business": "商务"}
 STATE_PATH = os.environ.get("STATE_PATH", "state/prices.json")
 ALERTS_PATH = os.environ.get("ALERTS_PATH", "alerts.json")
 
-# Alert when a fare is at or below these (CAD, round trip, incl. tax, 1 adult).
+# Hard ceilings (CAD, round trip, incl. tax, 1 adult). Anything at or below
+# these is worth a push; nothing observed in Sep-Dec 2026 has hit them yet.
 THRESHOLDS = {
-    "premium": int(os.environ.get("ALERT_PREMIUM", 3000)),
-    "business": int(os.environ.get("ALERT_BUSINESS", 6200)),
+    "premium": int(os.environ.get("ALERT_PREMIUM", 2700)),
+    "business": int(os.environ.get("ALERT_BUSINESS", 5000)),
 }
 # Also alert on any drop of at least this much versus the previous reading.
 DROP_DELTA = int(os.environ.get("ALERT_DROP", 150))
 
 WINDOW_START = os.environ.get("WINDOW_START", "2026-09-01")
 WINDOW_END = os.environ.get("WINDOW_END", "2026-12-20")
-TRIP_LENGTHS = [int(x) for x in os.environ.get("TRIP_LENGTHS", "14,17").split(",")]
-MAX_TRIP_DAYS = int(os.environ.get("MAX_TRIP_DAYS", 20))
+TRIP_LENGTHS = [
+    int(x) for x in os.environ.get("TRIP_LENGTHS", "14,17,21,24,26,28").split(",")
+]
+# Trip length is capped in WEEKDAYS (Mon-Fri, both ends inclusive), not calendar
+# days: 20 weekdays is roughly 26-28 calendar days depending on the start day.
+MAX_WEEKDAYS = int(os.environ.get("MAX_WEEKDAYS", 20))
 SLICES = int(os.environ.get("SLICES", 6))
 
 # Date pairs worth re-checking on every single run.
@@ -138,13 +143,25 @@ def dep_dates():
         d += timedelta(days=1)
 
 
+def weekdays_between(d1, d2):
+    """Mon-Fri days from d1 to d2, both ends inclusive."""
+    days = (d2 - d1).days + 1
+    full_weeks, rem = divmod(days, 7)
+    count = full_weeks * 5
+    for i in range(rem):
+        if (d1 + timedelta(days=full_weeks * 7 + i)).weekday() < 5:
+            count += 1
+    return count
+
+
 def build_targets():
     """(dep, ret) pairs for this run: watchlist + one rotating slice."""
     full = []
     for dep in dep_dates():
         for n in TRIP_LENGTHS:
-            if n <= MAX_TRIP_DAYS:
-                full.append((dep.isoformat(), (dep + timedelta(days=n)).isoformat()))
+            ret = dep + timedelta(days=n)
+            if weekdays_between(dep, ret) <= MAX_WEEKDAYS:
+                full.append((dep.isoformat(), ret.isoformat()))
 
     slice_no = int(time.time() // 1800) % SLICES
     rotating = [p for i, p in enumerate(full) if i % SLICES == slice_no]

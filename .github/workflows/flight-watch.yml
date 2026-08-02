@@ -10,11 +10,11 @@ on:
       alert_premium:
         description: "Alert when premium economy is at or below (CAD)"
         required: false
-        default: "3000"
+        default: "2700"
       alert_business:
         description: "Alert when business is at or below (CAD)"
         required: false
-        default: "6200"
+        default: "5000"
 
 permissions:
   contents: write
@@ -37,14 +37,14 @@ jobs:
       - name: Scan fares
         id: scan
         env:
-          ALERT_PREMIUM: ${{ github.event.inputs.alert_premium || '3000' }}
-          ALERT_BUSINESS: ${{ github.event.inputs.alert_business || '6200' }}
+          ALERT_PREMIUM: ${{ github.event.inputs.alert_premium || '2700' }}
+          ALERT_BUSINESS: ${{ github.event.inputs.alert_business || '5000' }}
           ALERT_DROP: "150"
           WINDOW_START: "2026-09-01"
           WINDOW_END: "2026-12-20"
-          TRIP_LENGTHS: "14,17"
-          MAX_TRIP_DAYS: "20"
-          SLICES: "6"
+          TRIP_LENGTHS: "14,17,21,24,26,28"
+          MAX_WEEKDAYS: "20"
+          SLICES: "10"
         run: python scripts/scan.py
 
       - name: Push to Telegram
