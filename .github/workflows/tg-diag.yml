@@ -7,23 +7,19 @@ jobs:
       TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
       TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
     steps:
-      - name: Isolate what Telegram rejects
+      - name: Check secret hygiene (never prints the secret itself)
         run: |
-          api="https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}"
-          echo "token length: ${#TELEGRAM_BOT_TOKEN}  chat_id length: ${#TELEGRAM_CHAT_ID}"
-          echo "--- 1. getMe (is the token valid?) ---"
-          curl -sS -o /tmp/1.txt -w "http=%{http_code}\n" "$api/getMe" || true
-          cat /tmp/1.txt; echo
-          echo "--- 2. tiny plain-text sendMessage ---"
-          curl -sS -o /tmp/2.txt -w "http=%{http_code}\n" \
-            --data-urlencode "chat_id=${TELEGRAM_CHAT_ID}" \
-            --data-urlencode "text=flight-watch diagnostic" \
-            "$api/sendMessage" || true
-          cat /tmp/2.txt; echo
-          echo "--- 3. HTML parse_mode with a link ---"
-          curl -sS -o /tmp/3.txt -w "http=%{http_code}\n" \
-            --data-urlencode "chat_id=${TELEGRAM_CHAT_ID}" \
-            --data-urlencode 'text=<b>bold</b> <a href="https://example.com">link</a>' \
-            --data-urlencode "parse_mode=HTML" \
-            "$api/sendMessage" || true
-          cat /tmp/3.txt; echo
+          raw="${TELEGRAM_BOT_TOKEN}"
+          trimmed="$(printf '%s' "$raw" | tr -d '[:space:]')"
+          echo "raw length     : ${#raw}"
+          echo "trimmed length : ${#trimmed}"
+          if [ "${#raw}" -ne "${#trimmed}" ]; then
+            echo ">>> TOKEN CONTAINS WHITESPACE (this alone breaks the URL)"
+          fi
+          # structure only: digits before the colon, secret length after it
+          echo "chars before ':' = $(printf '%s' "$trimmed" | cut -d: -f1 | wc -c)"
+          echo "chars after  ':' = $(printf '%s' "$trimmed" | cut -d: -f2- | wc -c)"
+          echo "--- getMe with TRIMMED token ---"
+          curl -sS -o /tmp/t.txt -w "http=%{http_code}\n" \
+            "https://api.telegram.org/bot${trimmed}/getMe" || true
+          cat /tmp/t.txt; echo
