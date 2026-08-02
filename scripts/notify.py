@@ -12,12 +12,14 @@ import html
 import json
 import os
 import sys
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
 
 ALERTS_PATH = os.environ.get("ALERTS_PATH", "alerts.json")
 MAX_LINES = int(os.environ.get("MAX_ALERT_LINES", 8))
+RETRIES = int(os.environ.get("TELEGRAM_RETRIES", 4))
 
 TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
 CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "")
@@ -37,26 +39,34 @@ def send(text):
         }
     ).encode()
     url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
-    try:
-        with urllib.request.urlopen(
-            urllib.request.Request(url, data=payload), timeout=30
-        ) as resp:
-            ok = json.load(resp).get("ok", False)
-            print("telegram ok" if ok else "telegram returned ok=false")
-            return ok
-    except urllib.error.HTTPError as exc:
-        # Safe to surface: the response body carries Telegram's own error
-        # description ("chat not found", "Unauthorized", ...) and never the
-        # bot token, which only ever appears in the request URL.
+    for attempt in range(RETRIES):
         try:
-            detail = exc.read().decode("utf-8", "ignore")[:300]
-        except Exception:  # noqa: BLE001
-            detail = "(no body)"
-        print(f"telegram push failed: HTTP {exc.code} {detail}", file=sys.stderr)
-        return False
-    except Exception as exc:  # noqa: BLE001 - never fail the workflow on a push error
-        print(f"telegram push failed: {type(exc).__name__}", file=sys.stderr)
-        return False
+            with urllib.request.urlopen(
+                urllib.request.Request(url, data=payload), timeout=30
+            ) as resp:
+                ok = json.load(resp).get("ok", False)
+                print("telegram ok" if ok else "telegram returned ok=false")
+                return ok
+        except urllib.error.HTTPError as exc:
+            # Safe to surface: the response body carries Telegram's own error
+            # description ("chat not found", "Unauthorized", ...) and never
+            # the bot token, which only appears in the request URL.
+            try:
+                detail = exc.read().decode("utf-8", "ignore")[:300]
+            except Exception:  # noqa: BLE001
+                detail = "(no body)"
+            print(f"telegram HTTP {exc.code} {detail}", file=sys.stderr)
+            # 4xx means the request itself is wrong (bad token, bad chat id,
+            # malformed HTML) - retrying cannot help. 5xx is Telegram having
+            # a moment, and usually clears within seconds.
+            if exc.code < 500:
+                return False
+        except Exception as exc:  # noqa: BLE001 - a push error must not fail the job
+            print(f"telegram push failed: {type(exc).__name__}", file=sys.stderr)
+        if attempt < RETRIES - 1:
+            time.sleep(3 * (attempt + 1))
+    print("telegram push failed after retries", file=sys.stderr)
+    return False
 
 
 def main():
