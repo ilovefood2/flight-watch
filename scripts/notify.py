@@ -12,6 +12,7 @@ import html
 import json
 import os
 import sys
+import urllib.error
 import urllib.parse
 import urllib.request
 
@@ -43,8 +44,17 @@ def send(text):
             ok = json.load(resp).get("ok", False)
             print("telegram ok" if ok else "telegram returned ok=false")
             return ok
+    except urllib.error.HTTPError as exc:
+        # Safe to surface: the response body carries Telegram's own error
+        # description ("chat not found", "Unauthorized", ...) and never the
+        # bot token, which only ever appears in the request URL.
+        try:
+            detail = exc.read().decode("utf-8", "ignore")[:300]
+        except Exception:  # noqa: BLE001
+            detail = "(no body)"
+        print(f"telegram push failed: HTTP {exc.code} {detail}", file=sys.stderr)
+        return False
     except Exception as exc:  # noqa: BLE001 - never fail the workflow on a push error
-        # Print the class only; the URL carries the bot token.
         print(f"telegram push failed: {type(exc).__name__}", file=sys.stderr)
         return False
 
