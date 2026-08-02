@@ -57,11 +57,17 @@ def main():
         return
 
     if data.get("blocked"):
+        if data.get("soft_blocked") and not data.get("hard_blocked"):
+            detail = (
+                f"请求都返回 200，但已知有航班的日期只有 {data.get('canary')} 出了价——"
+                "Google 在给 GitHub 的 IP 发空页面（限流）。"
+            )
+        else:
+            detail = f"{data.get('failures')}/{data.get('attempts')} 次请求直接失败。"
         send(
-            "⚠️ <b>机票监控抓取失败</b>\n\n"
-            f"{data.get('failures')}/{data.get('attempts')} 次请求失败，"
-            "很可能是 Google 开始拦截 GitHub 的服务器 IP 了。\n"
-            "价格数据这轮不可信，需要看一下 Actions 日志。"
+            "⚠️ <b>机票监控抓取异常</b>\n\n"
+            + detail
+            + "\n\n这轮价格数据不可信。<b>没有推送 ≠ 没有便宜票。</b>"
         )
         return
 

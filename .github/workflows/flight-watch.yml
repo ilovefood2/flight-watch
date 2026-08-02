@@ -44,7 +44,9 @@ jobs:
           WINDOW_END: "2026-12-20"
           TRIP_LENGTHS: "14,17,21,24,26,28"
           MAX_WEEKDAYS: "20"
-          SLICES: "10"
+          # ~52 requests/run. A run at this volume worked fine; bumping to ~78
+          # got the runner soft-blocked by Google, so do not lower this.
+          SLICES: "16"
         run: python scripts/scan.py
 
       - name: Push to Telegram

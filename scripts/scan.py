@@ -189,16 +189,23 @@ def main():
     new = dict(old)  # carry forward prices for pairs not scanned this run
     alerts = []
     attempts = failures = 0
+    # The watchlist pairs are known to have nonstop service, so they double as a
+    # canary: if none of them price, we are being served empty pages.
+    canary_total = canary_priced = 0
+    watch = set(WATCHLIST)
 
     for dep, ret in build_targets():
         days = (date.fromisoformat(ret) - date.fromisoformat(dep)).days
+        is_canary = (dep, ret) in watch
         for cabin, seat in CABINS.items():
             key = f"{cabin}|{dep}|{ret}"
             attempts += 1
+            canary_total += is_canary
             price, failed = cheapest(flight_url(dep, ret, seat))
             failures += failed
             if price is None:
                 continue
+            canary_priced += is_canary
 
             prev = old.get(key)
             new[key] = price
@@ -228,9 +235,16 @@ def main():
             print(f"  {cabin:8} {dep} -> {ret} ({days}d)  CA${price:,}{was}{flag}")
             time.sleep(random.uniform(1.0, 2.2))  # be polite, vary the cadence
 
-    # If essentially everything failed we are being blocked. Say so loudly
-    # instead of silently reporting "no cheap flights found".
-    blocked = attempts > 0 and failures / attempts > 0.8
+    # Two ways to be blocked, and the second one is the sneaky one:
+    #   1. hard failures  - the fetch itself threw.
+    #   2. soft blocking  - HTTP 200 with a page that carries no prices at all.
+    # Case 2 is indistinguishable from "this date pair has no nonstop combo"
+    # unless you know the pair *should* have flights, which is what the
+    # watchlist canary is for. Without this check a blocked run looks
+    # identical to a run that simply found nothing cheap.
+    hard_blocked = attempts > 0 and failures / attempts > 0.8
+    soft_blocked = canary_total > 0 and canary_priced == 0
+    blocked = hard_blocked or soft_blocked
 
     alerts.sort(key=lambda a: a["price"])
     os.makedirs(os.path.dirname(STATE_PATH) or ".", exist_ok=True)
@@ -244,8 +258,11 @@ def main():
         {
             "alerts": alerts,
             "blocked": blocked,
+            "hard_blocked": hard_blocked,
+            "soft_blocked": soft_blocked,
             "attempts": attempts,
             "failures": failures,
+            "canary": f"{canary_priced}/{canary_total}",
         },
         open(ALERTS_PATH, "w"),
         indent=1,
@@ -254,7 +271,9 @@ def main():
 
     print(
         f"\nattempts={attempts} failures={failures} "
+        f"canary={canary_priced}/{canary_total} "
         f"alerts={len(alerts)} blocked={blocked}"
+        + (" (soft)" if soft_blocked and not hard_blocked else "")
     )
     if os.environ.get("GITHUB_OUTPUT"):
         with open(os.environ["GITHUB_OUTPUT"], "a") as fh:
