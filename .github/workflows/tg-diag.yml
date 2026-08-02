@@ -1,0 +1,19 @@
+name: tg-diag
+on: workflow_dispatch
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Telegram API reachability from runner
+        run: |
+          echo "--- getMe with invalid token (healthy API answers 401) ---"
+          curl -sS -o /tmp/a.txt -w "http=%{http_code}\n" \
+            "https://api.telegram.org/bot123456:invalid/getMe" || true
+          cat /tmp/a.txt; echo
+          echo "--- sendMessage with invalid token ---"
+          curl -sS -o /tmp/b.txt -w "http=%{http_code}\n" \
+            -d "chat_id=1&text=x" \
+            "https://api.telegram.org/bot123456:invalid/sendMessage" || true
+          cat /tmp/b.txt; echo
+          echo "--- resolved IP ---"
+          getent hosts api.telegram.org || true
