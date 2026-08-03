@@ -37,14 +37,16 @@ if not alerts:
 best = alerts[0]
 print(f"**{best['cabin_zh']} CA${best['price']:,}** — "
       f"{best['dep']} → {best['ret']}（{best['days']} 天）\n")
-print("| 舱位 | 价格 | 变化 | 出发 | 返回 | 天数 | 触发原因 |")
-print("|---|---|---|---|---|---|---|")
+print("| 舱位 | 价格 | 变化 | 出发 | 返回 | 天数 | 触发原因 | 东航 |")
+print("|---|---|---|---|---|---|---|---|")
 for a in alerts:
     drop = (a["prev"] - a["price"]) if a.get("prev") else 0
     delta = f"↓{drop:,}" if drop > 0 else "—"
     print(
         f"| {a['cabin_zh']} | [CA${a['price']:,}]({a['url']}) | {delta} | "
-        f"{a['dep']} | {a['ret']} | {a['days']} | {a['why']} |"
+        f"{a['dep']} | {a['ret']} | {a['days']} | {a['why']} | "
+        f"{'⚠️ 同日有直飞，Google 未报价' if a.get('mu_unpriced') else '—'} |"
     )
-print("\n直飞 AC27/28 · 往返含税 · 1 成人 · CAD")
+print("\n价格仅为 Air Canada AC27/28 · 往返含税 · 1 成人 · CAD")
+print("\n> Google 不在服务端给东航报价，标 ⚠️ 的日期东航也飞直飞且可能更便宜。")
 print("\n> 这是 Telegram 推送失败后的兜底通知。")

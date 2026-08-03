@@ -103,19 +103,29 @@ def main():
         f"{best['dep'][5:]} → {best['ret'][5:]}（{best['days']}天）",
         "",
     ]
+    any_mu = False
     for a in alerts[:MAX_LINES]:
         drop = (a["prev"] - a["price"]) if a.get("prev") else 0
         delta = f"  ↓{drop:,}" if drop > 0 else ""
+        mu = ""
+        if a.get("mu_unpriced"):
+            any_mu = True
+            mu = "　⚠️东航同日有直飞"
         lines.append(
             f"• {a['cabin_zh']} <b>CA${a['price']:,}</b>{delta}　"
-            f"{a['dep'][5:]} → {a['ret'][5:]}（{a['days']}天）\n"
+            f"{a['dep'][5:]} → {a['ret'][5:]}（{a['days']}天）{mu}\n"
             f"　<a href=\"{html.escape(a['url'], quote=True)}\">在 Google Flights 打开</a>"
             f"　<i>{html.escape(a['why'])}</i>"
         )
     if len(alerts) > MAX_LINES:
         lines.append(f"\n…另有 {len(alerts) - MAX_LINES} 个也符合条件")
 
-    lines.append("\n<i>直飞 AC27/28 · 往返含税 · 1 成人 · CAD</i>")
+    lines.append("\n<i>价格仅为 Air Canada AC27/28 · 往返含税 · 1 成人 · CAD</i>")
+    if any_mu:
+        lines.append(
+            "<i>⚠️ Google 不在服务端给东航报价，标记的日期东航也飞直飞且可能更便宜，"
+            "打开链接后自己看一眼。</i>"
+        )
     if not send("\n".join(lines)):
         # Surface it. A notifier that fails quietly is worse than no
         # notifier: "no message" would read as "no cheap flights".

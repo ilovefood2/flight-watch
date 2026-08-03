@@ -36,8 +36,12 @@ THRESHOLDS = {
     "premium": int(os.environ.get("ALERT_PREMIUM", 3200)),
     "business": int(os.environ.get("ALERT_BUSINESS", 5000)),
 }
-# Also alert on any drop of at least this much versus the previous reading.
+# Also alert on any drop of at least this much versus the previous reading -
+# but only while the fare is still in shouting distance of the target. A drop
+# from 15,828 to 12,188 is a real 3,640 drop and completely useless when the
+# ceiling is 5,000, so gate the rule on this multiple of the threshold.
 DROP_DELTA = int(os.environ.get("ALERT_DROP", 150))
+DROP_RELEVANCE = float(os.environ.get("ALERT_DROP_RELEVANCE", 1.5))
 
 WINDOW_START = os.environ.get("WINDOW_START", "2026-09-01")
 WINDOW_END = os.environ.get("WINDOW_END", "2026-12-20")
@@ -115,7 +119,7 @@ def flight_url(dep, ret, seat):
 
 
 def cheapest(url, retries=3):
-    """Return (lowest price or None, fetch_failed)."""
+    """Return (lowest price or None, fetch_failed, china_eastern_unpriced)."""
     for attempt in range(retries):
         try:
             req = urllib.request.Request(
@@ -124,13 +128,18 @@ def cheapest(url, retries=3):
             with urllib.request.urlopen(req, timeout=45) as resp:
                 html = resp.read().decode("utf-8", "ignore")
             hits = [int(x) for x in PRICE_RE.findall(html)]
-            return (min(hits) if hits else None), False
+            # Google server-renders "Total price is unavailable" for China
+            # Eastern and only fills the real number in client-side, so a
+            # server-side scrape can never see MU's fare. Flag it instead of
+            # silently reporting the Air Canada price as "the" cheapest.
+            mu_unpriced = "unavailable. Nonstop flight with China Eastern" in html
+            return (min(hits) if hits else None), False, mu_unpriced
         except (urllib.error.URLError, TimeoutError, OSError) as exc:
             if attempt == retries - 1:
                 print(f"  ! fetch failed: {exc}", file=sys.stderr)
-                return None, True
+                return None, True, False
             time.sleep(4 * (attempt + 1))
-    return None, True
+    return None, True, False
 
 
 def dep_dates():
@@ -201,7 +210,7 @@ def main():
             key = f"{cabin}|{dep}|{ret}"
             attempts += 1
             canary_total += is_canary
-            price, failed = cheapest(flight_url(dep, ret, seat))
+            price, failed, mu_unpriced = cheapest(flight_url(dep, ret, seat))
             failures += failed
             if price is None:
                 continue
@@ -211,9 +220,10 @@ def main():
             new[key] = price
 
             why = None
+            relevant = price <= THRESHOLDS[cabin] * DROP_RELEVANCE
             if price <= THRESHOLDS[cabin]:
                 why = f"低于阈值 CA${THRESHOLDS[cabin]:,}"
-            elif prev and prev - price >= DROP_DELTA:
+            elif prev and prev - price >= DROP_DELTA and relevant:
                 why = f"比上次跌了 CA${prev - price:,}"
             if why:
                 alerts.append(
@@ -226,6 +236,7 @@ def main():
                         "price": price,
                         "prev": prev,
                         "why": why,
+                        "mu_unpriced": mu_unpriced,
                         "url": flight_url(dep, ret, seat),
                     }
                 )
