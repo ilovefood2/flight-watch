@@ -33,7 +33,7 @@ ALERTS_PATH = os.environ.get("ALERTS_PATH", "alerts.json")
 # Hard ceilings (CAD, round trip, incl. tax, 1 adult). Anything at or below
 # these is worth a push; nothing observed in Sep-Dec 2026 has hit them yet.
 THRESHOLDS = {
-    "premium": int(os.environ.get("ALERT_PREMIUM", 2700)),
+    "premium": int(os.environ.get("ALERT_PREMIUM", 3200)),
     "business": int(os.environ.get("ALERT_BUSINESS", 5000)),
 }
 # Also alert on any drop of at least this much versus the previous reading.
