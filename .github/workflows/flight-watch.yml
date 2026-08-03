@@ -18,6 +18,7 @@ on:
 
 permissions:
   contents: write
+  issues: write
 
 concurrency:
   group: flight-watch
@@ -50,11 +51,32 @@ jobs:
         run: python scripts/scan.py
 
       - name: Push to Telegram
+        id: notify
         if: always()
+        continue-on-error: true
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: python scripts/notify.py
+
+      # An alert that cannot be delivered is an alert that never happened, so
+      # fall back to a GitHub issue (which emails the repo owner) whenever the
+      # Telegram push does not land.
+      - name: Fall back to a GitHub issue
+        if: always() && steps.notify.outcome == 'failure'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python scripts/issue_body.py > /tmp/body.md
+          if grep -qE '^\((no alerts|no alerts\.json)' /tmp/body.md; then
+            echo "nothing to report - no issue opened."
+            exit 0
+          fi
+          title="$(head -1 /tmp/body.md | sed 's/[*]//g' | cut -c1-70)"
+          [ -n "$title" ] || title="flight-watch alert"
+          gh issue create --title "✈️ $title" --body-file /tmp/body.md \
+            --label flight-alert 2>/dev/null \
+            || gh issue create --title "✈️ $title" --body-file /tmp/body.md
 
       - name: Commit price history
         if: always()
