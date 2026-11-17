@@ -7,6 +7,17 @@ set -euo pipefail
 APP="$HOME/flight-watch"
 REPO="${REPO:-https://github.com/ilovefood2/flight-watch.git}"
 
+# This installs a systemd user timer, so it only works on the target machine.
+# Running it on a Mac used to clone the repo, write a .env and then die at the
+# first systemctl call, leaving a half-installed mess behind.
+if ! command -v systemctl >/dev/null 2>&1; then
+  echo "ERROR: no systemctl on this machine ($(uname -s))." >&2
+  echo "       Run this ON the Raspberry Pi, not on your laptop:" >&2
+  echo "         ssh kelvin@10.0.0.33" >&2
+  echo "         bash ~/flight-watch/deploy/install.sh" >&2
+  exit 1
+fi
+
 echo "==> syncing $APP"
 if [ -d "$APP/.git" ]; then
   git -C "$APP" pull --rebase --autostash
