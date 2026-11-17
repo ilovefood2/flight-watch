@@ -7,6 +7,7 @@ Wants=network-online.target
 Type=oneshot
 WorkingDirectory=%h/flight-watch
 EnvironmentFile=%h/flight-watch/.env
+Environment=PYTHONUNBUFFERED=1
 ExecStart=/usr/bin/python3 scripts/scan.py
 ExecStartPost=/usr/bin/python3 scripts/notify.py
 # A scan that cannot finish in 25 min is stuck; let the next timer tick retry.
