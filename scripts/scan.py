@@ -45,7 +45,10 @@ THRESHOLDS = {
 # Kept separate from THRESHOLDS so the two can be tuned independently.
 # These sat at 5,000/9,000 and pushed a business fare that had fallen 3,945
 # but was still 7,613 against a 5,000 target - a real drop, no action value.
-DROP_DELTA = int(os.environ.get("ALERT_DROP", 150))
+# Drop alerts are off by default: a fare that fell a long way but is still
+# far above target is a real price movement with no action value. Set
+# ALERT_DROP to a positive number to turn them back on.
+DROP_DELTA = int(os.environ.get("ALERT_DROP", 0))
 DROP_CEILING = {
     "premium": int(os.environ.get("DROP_CEILING_PREMIUM", 3800)),
     "business": int(os.environ.get("DROP_CEILING_BUSINESS", 6000)),
@@ -231,7 +234,7 @@ def main():
             relevant = price <= DROP_CEILING[cabin]
             if price <= THRESHOLDS[cabin]:
                 why = f"低于阈值 CA${THRESHOLDS[cabin]:,}"
-            elif prev and prev - price >= DROP_DELTA and relevant:
+            elif DROP_DELTA > 0 and prev and prev - price >= DROP_DELTA and relevant:
                 why = f"比上次跌了 CA${prev - price:,}（阈值外，但已进入关注区）"
             if why:
                 alerts.append({

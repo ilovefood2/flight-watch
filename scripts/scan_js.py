@@ -43,7 +43,10 @@ THRESHOLDS = {
     "premium": int(os.environ.get("ALERT_PREMIUM", 3200)),
     "business": int(os.environ.get("ALERT_BUSINESS", 5000)),
 }
-DROP_DELTA = int(os.environ.get("ALERT_DROP", 150))
+# Drop alerts are off by default: a fare that fell a long way but is still
+# far above target is a real price movement with no action value. Set
+# ALERT_DROP to a positive number to turn them back on.
+DROP_DELTA = int(os.environ.get("ALERT_DROP", 0))
 DROP_CEILING = {
     "premium": int(os.environ.get("DROP_CEILING_PREMIUM", 3800)),
     "business": int(os.environ.get("DROP_CEILING_BUSINESS", 6000)),
@@ -239,7 +242,8 @@ def main():
                     why = None
                     if price <= THRESHOLDS[cabin]:
                         why = f"低于阈值 CA${THRESHOLDS[cabin]:,}"
-                    elif (prev and prev - price >= DROP_DELTA
+                    elif (DROP_DELTA > 0 and prev
+                          and prev - price >= DROP_DELTA
                           and price <= DROP_CEILING[cabin]):
                         why = f"比上次跌了 CA${prev - price:,}"
                     if why:
