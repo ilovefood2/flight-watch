@@ -114,16 +114,21 @@ def scrape(page, u):
     that a fixed wait either truncates results or wastes most of a minute.
     """
     page.goto(u, timeout=NAV_TIMEOUT, wait_until="domcontentloaded")
-    body = ""
+    seg = ""
     for _ in range(SETTLE_MAX // 5):
         page.wait_for_timeout(5000)
         body = page.inner_text("body")
-        if "Departures to" in body and PRICE_RE.search(body):
+        idx = body.find("Departures to")
+        if idx < 0:
+            continue
+        seg = body[idx:idx + 1500]
+        # Poll the RESULTS SECTION, not the whole page: Trip.com paints
+        # prices into the footer and promos long before the fare list
+        # arrives, so a body-wide check returns an empty segment.
+        if PRICE_RE.search(seg):
             break
-    idx = body.find("Departures to")
-    if idx < 0:
+    if not seg:
         return None, []
-    seg = body[idx:idx + 1500]
     m = CHEAPEST_RE.search(seg) or PRICE_RE.search(seg)
     if not m:
         return None, []
