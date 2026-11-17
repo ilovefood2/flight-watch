@@ -45,8 +45,8 @@ THRESHOLDS = {
 }
 DROP_DELTA = int(os.environ.get("ALERT_DROP", 150))
 DROP_CEILING = {
-    "premium": int(os.environ.get("DROP_CEILING_PREMIUM", 5000)),
-    "business": int(os.environ.get("DROP_CEILING_BUSINESS", 9000)),
+    "premium": int(os.environ.get("DROP_CEILING_PREMIUM", 3800)),
+    "business": int(os.environ.get("DROP_CEILING_BUSINESS", 6000)),
 }
 
 WINDOW_START = os.environ.get("WINDOW_START", "2027-01-01")

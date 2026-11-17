@@ -41,15 +41,14 @@ THRESHOLDS = {
     "business": int(os.environ.get("ALERT_BUSINESS", 5000)),
 }
 # Also alert on a drop of at least this much versus the previous reading, but
-# only while the fare is low enough to be worth a look. This ceiling is
-# deliberately NOT derived from THRESHOLDS: 2027 fares open far above the
-# target prices (cheapest business seen in a Jan-Sep sweep was 7,949), so
-# gating drops at threshold*1.5 would mute the monitor completely. Threshold
-# alerts mean "you hit your price"; drop alerts mean "this is moving".
+# only while the fare is close enough to the target to be worth acting on.
+# Kept separate from THRESHOLDS so the two can be tuned independently.
+# These sat at 5,000/9,000 and pushed a business fare that had fallen 3,945
+# but was still 7,613 against a 5,000 target - a real drop, no action value.
 DROP_DELTA = int(os.environ.get("ALERT_DROP", 150))
 DROP_CEILING = {
-    "premium": int(os.environ.get("DROP_CEILING_PREMIUM", 5000)),
-    "business": int(os.environ.get("DROP_CEILING_BUSINESS", 9000)),
+    "premium": int(os.environ.get("DROP_CEILING_PREMIUM", 3800)),
+    "business": int(os.environ.get("DROP_CEILING_BUSINESS", 6000)),
 }
 
 WINDOW_START = os.environ.get("WINDOW_START", "2027-01-01")
