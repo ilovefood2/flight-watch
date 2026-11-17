@@ -61,6 +61,8 @@ UA = ("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) "
       "Chrome/156.0.0.0 Safari/537.36")
 PRICE_RE = re.compile(r"CAD\s?([\d,]{4,9})")
 CHEAPEST_RE = re.compile(r"Cheapest\s*\n\s*CAD\s?([\d,]{4,9})")
+NO_SERVICE_RE = re.compile(
+    r"no available flights found|No direct flights found", re.I)
 AIRLINE_RE = re.compile(
     r"(Air Canada|Air China|China Eastern(?: Airlines)?|China Southern(?: Airlines)?|"
     r"Hainan Airlines|Xiamen Air)")
@@ -128,11 +130,17 @@ def scrape(page, u):
         if PRICE_RE.search(seg):
             break
     if not seg:
-        return None, []
+        return None, [], "timeout"
+    # "no nonstop on this route/date" is a real answer, not a scrape failure.
+    # Conflating the two made a run of genuinely serviceless dates look like
+    # the scraper had been blocked.
+    if NO_SERVICE_RE.search(seg):
+        return None, [], "no-nonstop"
     m = CHEAPEST_RE.search(seg) or PRICE_RE.search(seg)
     if not m:
-        return None, []
-    return int(m.group(1).replace(",", "")), sorted(set(AIRLINE_RE.findall(seg)))
+        return None, [], "timeout"
+    return (int(m.group(1).replace(",", "")),
+            sorted(set(AIRLINE_RE.findall(seg))), "ok")
 
 
 def main():
@@ -145,7 +153,7 @@ def main():
 
     targets = build_targets()
     new, alerts = dict(old), []
-    attempts = misses = 0
+    attempts = misses = no_service = 0
 
     exe = shutil.which("chromium") or shutil.which("chromium-browser")
     if not exe:
@@ -165,16 +173,21 @@ def main():
                     attempts += 1
                     page = ctx.new_page()
                     try:
-                        price, airlines = scrape(page, url(dc, ac, dep, ret, cls))
+                        price, airlines, status = scrape(
+                            page, url(dc, ac, dep, ret, cls))
                     except Exception as exc:  # noqa: BLE001 - one bad page must not kill the run
                         print(f"  ! {dc}->{ac} {dep} {cabin}: {type(exc).__name__}",
                               file=sys.stderr)
-                        price, airlines = None, []
+                        price, airlines, status = None, [], "timeout"
                     finally:
                         page.close()
 
                     if price is None:
-                        misses += 1
+                        if status == "no-nonstop":
+                            no_service += 1
+                            print(f"  {cabin:8} {dc}->{ac} {dep}  no nonstop service")
+                        else:
+                            misses += 1
                         continue
 
                     key = f"{cabin}|{dc}{ac}|{dep}|{ret}"
@@ -206,16 +219,20 @@ def main():
 
     # Every query failing means Trip.com stopped rendering for us, which looks
     # identical to "nothing is cheap" unless we say so.
-    blocked = attempts > 0 and misses == attempts
+    scraped = attempts - no_service
+    blocked = scraped > 0 and misses == scraped
     alerts.sort(key=lambda a: a["price"])
     os.makedirs(os.path.dirname(STATE_PATH) or ".", exist_ok=True)
     json.dump({"updated": datetime.now().astimezone().isoformat(timespec="seconds"),
                "prices": new}, open(STATE_PATH, "w"), indent=1, sort_keys=True)
     json.dump({"alerts": alerts, "blocked": blocked, "hard_blocked": blocked,
                "soft_blocked": False, "attempts": attempts, "failures": misses,
-               "canary": f"{attempts - misses}/{attempts}"},
+               "no_service": no_service,
+               "canary": f"{scraped - misses}/{scraped}"},
               open(ALERTS_PATH, "w"), indent=1, ensure_ascii=False)
-    print(f"\nattempts={attempts} misses={misses} alerts={len(alerts)} blocked={blocked}")
+    print(f"\nattempts={attempts} priced={attempts - misses - no_service} "
+          f"no-nonstop={no_service} misses={misses} "
+          f"alerts={len(alerts)} blocked={blocked}")
     return 0
 
 
