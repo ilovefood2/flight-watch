@@ -1,0 +1,11 @@
+[Unit]
+Description=Run the Trip.com browser scan every 3 hours
+
+[Timer]
+OnBootSec=12min
+OnUnitActiveSec=3h
+RandomizedDelaySec=600
+Persistent=true
+
+[Install]
+WantedBy=timers.target

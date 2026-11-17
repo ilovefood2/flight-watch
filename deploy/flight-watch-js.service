@@ -1,0 +1,15 @@
+[Unit]
+Description=Flight fare scan via Trip.com (browser; sees Chinese carriers)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/flight-watch
+EnvironmentFile=%h/flight-watch/.env
+ExecStart=%h/flight-watch/.venv/bin/python scripts/scan_js.py
+ExecStartPost=%h/flight-watch/.venv/bin/python scripts/notify.py
+# Each query drives a real browser (~60s); a run that overruns this is stuck.
+TimeoutStartSec=3600
+Nice=15
+NoNewPrivileges=true

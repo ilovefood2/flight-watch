@@ -36,6 +36,7 @@ CABINS = {"premium": "s", "business": "c"}
 CABIN_ZH = {"premium": "超经", "business": "商务"}
 
 STATE_PATH = os.environ.get("JS_STATE_PATH", "state/prices_js.json")
+GOOGLE_STATE = os.environ.get("STATE_PATH", "state/prices.json")
 ALERTS_PATH = os.environ.get("ALERTS_PATH", "alerts.json")
 
 THRESHOLDS = {
@@ -84,6 +85,40 @@ def weekdays_between(d1, d2):
     return count
 
 
+def google_leads(limit):
+    """Dates the fast Google scan already found cheap, best first.
+
+    A browser query costs ~60s against ~2s for the HTML scraper, so sweeping
+    the whole window here would take weeks per pass. Spend them verifying the
+    dates Google already likes - that is where Trip.com's extra carriers are
+    most likely to undercut it.
+    """
+    try:
+        prices = json.load(open(GOOGLE_STATE)).get("prices", {})
+    except (OSError, json.JSONDecodeError):
+        return []
+    AIRPORT_TO_CITY = {"YYZ": "yto", "PVG": "sha", "PEK": "bjs"}
+    rows = []
+    for key, price in prices.items():
+        try:
+            cabin, pair, dep, ret = key.split("|")
+            o, d = AIRPORT_TO_CITY.get(pair[:3]), AIRPORT_TO_CITY.get(pair[3:])
+        except ValueError:
+            continue
+        if not o or not d or dep <= date.today().isoformat():
+            continue
+        # rank by how far above target it sits, so "nearly there" comes first
+        rows.append((price / max(THRESHOLDS.get(cabin, 1), 1), (o, d, dep, ret)))
+    rows.sort()
+    out = []
+    for _, t in rows:
+        if t not in out:
+            out.append(t)
+        if len(out) >= limit:
+            break
+    return out
+
+
 def build_targets():
     start = max(date.fromisoformat(WINDOW_START), date.today() + timedelta(days=1))
     end = date.fromisoformat(WINDOW_END)
@@ -100,11 +135,19 @@ def build_targets():
         return []
     # Walk the window a slice at a time; the offset rides the clock so
     # consecutive runs pick up where the last one left off.
+    # Half the budget verifies Google's current best dates, half keeps
+    # crawling the window so dates Google cannot price still get looked at.
+    leads = google_leads(PER_RUN // 2)
     slices = max(1, (len(full) + PER_RUN - 1) // PER_RUN)
     off = (int(time.time() // 3600) % slices) * PER_RUN
-    targets = full[off:off + PER_RUN]
-    print(f"{len(full)} itineraries in window; this run does "
-          f"{len(targets)} (offset {off})")
+    sweep = full[off:off + (PER_RUN - len(leads))]
+    targets, seen = [], set()
+    for t in leads + sweep:
+        if t not in seen:
+            seen.add(t)
+            targets.append(t)
+    print(f"{len(full)} itineraries in window; this run does {len(targets)} "
+          f"({len(leads)} following Google's cheapest, {len(targets)-len(leads)} sweeping)")
     return targets
 
 

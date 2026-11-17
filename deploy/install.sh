@@ -49,17 +49,36 @@ ALERT_BUSINESS=5000
 ALERT_DROP=150
 DROP_CEILING_PREMIUM=5000
 DROP_CEILING_BUSINESS=9000
+
+# Trip.com browser scan (slow; sees Air China / China Eastern)
+JS_ROUTES=yto-sha,sha-yto,yto-bjs,bjs-yto
+JS_PER_RUN=12
 ENVEOF
   chmod 600 .env
   echo "==> created $APP/.env - fill in the Telegram values, then re-run this script"
 fi
 chmod 600 .env
 
+# The Trip.com scanner needs a browser; the Google one is stdlib-only, so a
+# missing venv must not stop the fast scan from being installed.
+if [ ! -x .venv/bin/python ]; then
+  echo "==> creating venv for the browser scanner"
+  python3 -m venv .venv && .venv/bin/pip install -q --upgrade pip && \
+    .venv/bin/pip install -q playwright || echo "!! playwright install failed"
+fi
+command -v chromium >/dev/null || command -v chromium-browser >/dev/null || \
+  echo "!! no chromium found - install it: sudo apt install -y chromium"
+
 echo "==> installing systemd units (user scope)"
 mkdir -p "$HOME/.config/systemd/user"
 cp deploy/flight-watch.service deploy/flight-watch.timer "$HOME/.config/systemd/user/"
 systemctl --user daemon-reload
 systemctl --user enable --now flight-watch.timer
+if [ -x .venv/bin/python ]; then
+  cp deploy/flight-watch-js.service deploy/flight-watch-js.timer "$HOME/.config/systemd/user/"
+  systemctl --user daemon-reload
+  systemctl --user enable --now flight-watch-js.timer
+fi
 
 # Without lingering, user units stop when the SSH session ends.
 if ! loginctl show-user "$USER" 2>/dev/null | grep -q 'Linger=yes'; then
