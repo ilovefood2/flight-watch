@@ -1,83 +1,82 @@
-# flight-watch — YYZ ⇄ 上海浦东 直飞票价监控
+# flight-watch — YYZ ⇄ 上海浦东 直飞票价监控（2027）
 
-每 30 分钟扫一次 Air Canada **AC27/AC28**（多伦多 ⇄ 上海浦东，波音 787-9 直飞）的
-**超经**和**商务**往返票价，发现便宜票就推 Telegram。
+扫 Air Canada 多伦多 ⇄ 上海浦东**直飞**的**超经**和**商务**往返票价，便宜了就推 Telegram。
 
-不需要任何 API key：脚本自己拼 Google Flights 的 `tfs` protobuf 搜索参数，
-解析服务端渲染的 HTML，从 `aria-label="<n> Canadian dollars"` 读价格。
+**两个方向都扫**：多伦多出发的往返（YYZ→PVG→YYZ）和上海出发的往返（PVG→YYZ→PVG）。
+这是两个独立定价的市场，差价可以很大 —— 2027-02-10 同一天，商务舱从上海出发
+CA$7,799，从多伦多出发 CA$10,558，**差 2,759**。
+
+不需要 API key：脚本自己拼 Google Flights 的 `tfs` protobuf 搜索参数，解析服务端
+渲染的 HTML，从 `aria-label="<n> Canadian dollars"` 读价格。
 
 ## 触发条件
 
-推送发生在满足任一条件时：
-
-| 条件 | 默认值 |
+| 条件 | 默认 |
 |---|---|
-| 超经 ≤ | **CA$3,200** |
-| 商务 ≤ | **CA$5,000** |
-| 比上次扫描跌了 ≥ | CA$150 |
+| 超经 ≤ | CA$3,200 |
+| 商务 ≤ | CA$5,000 |
+| 跌 ≥ CA$150 **且** 超经 ≤ CA$5,000 / 商务 ≤ CA$9,000 | — |
 
-> 超经 3,200 是够得着的：Google 上观测到过 CA$3,105（12/2→12/23）。
-> 商务 5,000 从未出现过——观测到的地板是 CA$6,089（Trip.com），放宽行程长度也没能
-> 打破它，所以商务那条基本是守株待兔，日常真正会触发的是第三条（跌 ≥150）。
+前两条是「到你的目标价了」，第三条是「它在动，值得看一眼」。两者的上限故意分开：
+2027 年的票价开盘就远高于目标价（1–9 月抽样里商务最低 CA$7,949），如果降价提醒也
+按目标价卡，监控会**完全哑掉**。
 
-没有符合条件的就**完全不推送**——每半小时一次的频率下，静默很重要。
-
-改阈值：编辑 `.github/workflows/flight-watch.yml` 里的 `ALERT_PREMIUM` /
-`ALERT_BUSINESS` / `ALERT_DROP`，或者在 Actions 页面用 **Run workflow** 手动传参。
+没有命中就**完全不推送**。
 
 ## 扫描范围
 
-- 出发窗口：`2026-09-01` → `2026-12-20`
-- 行程长度：14 / 17 / 21 / 24 / 26 / 28 天
-- **上限按工作日算：周一至周五、含首尾 ≤ 20 天**（`MAX_WEEKDAYS`）。
-  20 个工作日 ≈ 26 个自然日（周末出发可到 28）。法定假期不扣除。
-- 只扫 AC 实际有航班的星期几（夏季 一/三/五/日，冬季 二/三/四/六，10-25 换季）
+- 窗口：`2027-01-01` → `2027-12-31`，**自动裁剪到可售期**
+- 行程长度：14 / 21 / 28 天，上限 **20 个工作日**（周一至五、含首尾）
+- 两个方向、两个舱位
 
-全窗口约 300+ 个日期组合。每次运行只扫 **1/10 的轮转切片 + 固定 watchlist**，
-所以 5 小时覆盖一遍全部日期，同时把单次请求量压在 ~76 个。
+**可售期（booking horizon）**：航司只开售约 355 天内的航班。脚本每天二分查找一次
+最远可售日期，只扫到那里为止 —— 否则一年里有小半年是在空扫。2026-11-16 实测可售
+到 **2027-09-27**；这条线每天自己往前走，10 月之后的日期会随着开售被自动纳入。
 
-`scripts/scan.py` 顶部的 `WATCHLIST` 是每次都查的重点日期，可以随时改。
+**不再硬编码星期几。** 2026 年 AC 每周飞 4 班，2027 年 7 月看起来天天飞。写死的
+班期表失效时会以最糟糕的方式失败 —— **静默跳过本来有便宜票的日期**。现在全扫，
+没航班的日期自然返回空。
 
-## 配置
-
-需要两个 GitHub Secret：
-
-| Secret | 怎么拿 |
-|---|---|
-| `TELEGRAM_BOT_TOKEN` | Telegram 里找 [@BotFather](https://t.me/BotFather) → `/newbot` |
-| `TELEGRAM_CHAT_ID` | 给你的 bot 发一句话，然后打开 `https://api.telegram.org/bot<TOKEN>/getUpdates`，取 `result[0].message.chat.id` |
-
-设置（**在你自己的终端跑，不要把 token 贴给别人**）：
+## 部署到树莓派
 
 ```bash
-gh secret set TELEGRAM_BOT_TOKEN
-gh secret set TELEGRAM_CHAT_ID
+ssh <user>@10.0.0.33
+git clone https://github.com/ilovefood2/flight-watch.git ~/flight-watch
+bash ~/flight-watch/deploy/install.sh     # 第一次会生成 .env
+nano ~/flight-watch/.env                  # 填 Telegram token / chat id
+bash ~/flight-watch/deploy/install.sh     # 再跑一次装 systemd timer
 ```
 
-## 本地跑
+装好之后：
 
 ```bash
-WINDOW_START=2026-12-01 WINDOW_END=2026-12-10 STATE_PATH=/tmp/s.json python3 scripts/scan.py
+systemctl --user list-timers flight-watch.timer   # 下次运行时间
+systemctl --user start flight-watch.service       # 立刻跑一次
+journalctl --user -u flight-watch.service -f      # 看日志
 ```
 
-没设 Telegram 密钥时，`notify.py` 会把消息打到 stdout 而不是推送，方便调试。
+配置都在 `~/flight-watch/.env`（`chmod 600`，不进 git）。
+
+**为什么用树莓派而不是 GitHub Actions**：
+1. GitHub 的定时任务实测平均 **96 分钟**才跑一次（cron 写的是 30 分钟），最慢 223 分钟
+2. GitHub runner 用 Azure 数据中心 IP，**实测会被 Google 软封**（返回 200 但页面无价格）
+3. 树莓派是住宅 IP + 真 cron，两个问题都没有
+
+## 已知限制
+
+- **看不见东航。** Google 的服务端 HTML 对东航只写 `Total price is unavailable`，
+  真实价格是浏览器端 JS 补的。脚本检测到这个标记时会在提醒里标 ⚠️，但拿不到数字。
+  2026-09-02 实测 AC 12,188、东航 7,090 —— **这个盲区恰好在 AC 最贵时最严重**。
+- **只看 Google 的价。** Trip.com 在某些日期便宜 700–900。收到提醒后建议再比一下。
+- 价格是 1 成人、往返含税、只看直飞。
 
 ## 文件
 
 ```
 scripts/scan.py                     抓价 + 比对 + 生成 alerts.json
 scripts/notify.py                   推 Telegram
-state/prices.json                   价格历史（每次运行自动 commit）
-.github/workflows/flight-watch.yml  定时任务
+scripts/issue_body.py               Telegram 挂了时的 GitHub Issue 兜底
+deploy/install.sh                   树莓派一键安装
+deploy/flight-watch.{service,timer} systemd 单元
+state/prices.json                   价格历史
 ```
-
-## 已知限制
-
-- **GitHub 的定时任务不准时。** `*/30` 在高负载时经常延迟 10–60 分钟，
-  官方文档明确说了不保证。把它当"大约每半到一小时"看。
-- **可能被 Google 拦。** GitHub runner 用的是 Azure 数据中心 IP，
-  高频抓取有被限流的风险。脚本会统计失败率，超过 80% 就判定为被拦并推一条警告，
-  而不是假装"没有便宜票"。真被拦了就把 `SLICES` 调大、或把 cron 改成 `0 */2 * * *`。
-- **只看 Google Flights 的价。** Trip.com 在某些日期便宜 700–900，但它没有稳定的
-  服务端接口可抓。收到提醒后建议再手动比一下 Trip.com。
-- 价格是 1 成人、往返含税、只看直飞。

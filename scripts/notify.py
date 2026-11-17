@@ -98,9 +98,10 @@ def main():
 
     best = alerts[0]
     lines = [
-        "✈️ <b>便宜票提醒</b>  YYZ → 上海浦东",
+        "✈️ <b>便宜票提醒</b>",
         f"<b>{best['cabin_zh']} CA${best['price']:,}</b>  "
-        f"{best['dep'][5:]} → {best['ret'][5:]}（{best['days']}天）",
+        f"{best.get('route','')}  "
+        f"{best['dep']} → {best['ret']}（{best['days']}天）",
         "",
     ]
     any_mu = False
@@ -113,7 +114,8 @@ def main():
             mu = "　⚠️东航同日有直飞"
         lines.append(
             f"• {a['cabin_zh']} <b>CA${a['price']:,}</b>{delta}　"
-            f"{a['dep'][5:]} → {a['ret'][5:]}（{a['days']}天）{mu}\n"
+            f"{a.get('route','')}　"
+            f"{a['dep']} → {a['ret']}（{a['days']}天）{mu}\n"
             f"　<a href=\"{html.escape(a['url'], quote=True)}\">在 Google Flights 打开</a>"
             f"　<i>{html.escape(a['why'])}</i>"
         )

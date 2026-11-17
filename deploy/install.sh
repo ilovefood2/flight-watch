@@ -1,0 +1,65 @@
+#!/usr/bin/env bash
+# Install the fare monitor on a Raspberry Pi (or any systemd box).
+# Run ON the Pi:   bash deploy/install.sh
+# Idempotent - safe to re-run after a git pull.
+set -euo pipefail
+
+APP="$HOME/flight-watch"
+REPO="${REPO:-https://github.com/ilovefood2/flight-watch.git}"
+
+echo "==> syncing $APP"
+if [ -d "$APP/.git" ]; then
+  git -C "$APP" pull --rebase --autostash
+else
+  git clone "$REPO" "$APP"
+fi
+
+cd "$APP"
+mkdir -p state
+[ -f state/prices.json ] || echo '{"updated": null, "prices": {}}' > state/prices.json
+
+if [ ! -f .env ]; then
+  cat > .env <<'ENVEOF'
+# Telegram credentials. Fill these in, then: chmod 600 .env
+TELEGRAM_BOT_TOKEN=
+TELEGRAM_CHAT_ID=
+
+# Scan window and scope
+WINDOW_START=2027-01-01
+WINDOW_END=2027-12-31
+ROUTES=YYZ-PVG,PVG-YYZ
+TRIP_LENGTHS=14,21,28
+MAX_WEEKDAYS=20
+SLICES=24
+
+# Alert thresholds (CAD, round trip incl. tax, 1 adult)
+ALERT_PREMIUM=3200
+ALERT_BUSINESS=5000
+ALERT_DROP=150
+DROP_CEILING_PREMIUM=5000
+DROP_CEILING_BUSINESS=9000
+ENVEOF
+  chmod 600 .env
+  echo "==> created $APP/.env - fill in the Telegram values, then re-run this script"
+fi
+chmod 600 .env
+
+echo "==> installing systemd units (user scope)"
+mkdir -p "$HOME/.config/systemd/user"
+cp deploy/flight-watch.service deploy/flight-watch.timer "$HOME/.config/systemd/user/"
+systemctl --user daemon-reload
+systemctl --user enable --now flight-watch.timer
+
+# Without lingering, user units stop when the SSH session ends.
+if ! loginctl show-user "$USER" 2>/dev/null | grep -q 'Linger=yes'; then
+  echo "==> enabling linger so the timer survives logout"
+  sudo loginctl enable-linger "$USER" || \
+    echo "!! could not enable linger; run: sudo loginctl enable-linger $USER"
+fi
+
+echo
+echo "==> done"
+systemctl --user list-timers flight-watch.timer --no-pager || true
+echo
+echo "run once now : systemctl --user start flight-watch.service"
+echo "watch logs   : journalctl --user -u flight-watch.service -f"

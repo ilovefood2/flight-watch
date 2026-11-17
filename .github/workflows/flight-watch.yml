@@ -1,10 +1,9 @@
 name: flight-watch
 
+# The Raspberry Pi owns the schedule now: GitHub ran this every ~96 min
+# instead of the requested 30, and its runner IPs get soft-blocked by Google.
+# Kept as a manual escape hatch only.
 on:
-  schedule:
-    # Every 30 minutes. GitHub often runs scheduled jobs late under load -
-    # treat this as "roughly every 30-60 min", not a guarantee.
-    - cron: "*/30 * * * *"
   workflow_dispatch:
     inputs:
       alert_premium:

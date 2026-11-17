@@ -1,0 +1,12 @@
+[Unit]
+Description=Run the flight fare scan every 30 minutes
+
+[Timer]
+OnBootSec=3min
+OnUnitActiveSec=30min
+# Spread the load a little so we never hit Google on a predictable boundary.
+RandomizedDelaySec=180
+Persistent=true
+
+[Install]
+WantedBy=timers.target
