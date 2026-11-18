@@ -20,6 +20,9 @@ import urllib.request
 ALERTS_PATH = os.environ.get("ALERTS_PATH", "alerts.json")
 MAX_LINES = int(os.environ.get("MAX_ALERT_LINES", 8))
 RETRIES = int(os.environ.get("TELEGRAM_RETRIES", 4))
+# Set NOTIFY_TEST=1 for any verification run. A test push that is
+# indistinguishable from a real alert teaches you to distrust the channel.
+TEST_MODE = os.environ.get("NOTIFY_TEST", "") not in ("", "0", "false")
 
 TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
 CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "")
@@ -97,8 +100,12 @@ def main():
         return
 
     best = alerts[0]
-    lines = [
-        "✈️ <b>便宜票提醒</b>",
+    lines = []
+    if TEST_MODE:
+        lines += ["🧪 <b>【测试消息 · 不是真的到价】</b>",
+                  "<i>这是一次人工验证推送，阈值被临时调高以强制触发。</i>", ""]
+    lines += [
+        ("🧪 <b>测试</b> · 便宜票提醒" if TEST_MODE else "✈️ <b>便宜票提醒</b>"),
         f"<b>{best['cabin_zh']} CA${best['price']:,}</b>  "
         f"{best.get('route','')}  "
         f"{best['dep']} → {best['ret']}（{best['days']}天）",
